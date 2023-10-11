@@ -1,1 +1,12 @@
+---
+- hosts: "{{ db_name }}"
+  gather_facts: False
+  remote_user: orawhq
+  tasks:
+  - debug: var=inventory_hostname
+  - debug: var=db_name
 
+  - name: Include all yaml files
+    include_vars:
+      dir: vars
+    tags: environment_source
