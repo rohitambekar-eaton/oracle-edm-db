@@ -1,0 +1,942 @@
+---
+- hosts: "{{ db_name }}"
+  gather_facts: False
+  remote_user: orawhq
+  tasks:
+  - debug: var=inventory_hostname
+  - debug: var=db_name
+
+  - name: Include all yaml files
+    include_vars:
+      dir: vars
+    tags: environment_source
+
+#Ansible standby non-rac
+  - set_fact:
+      db_version: "{{ db_list[db_name].version }}"
+      oracle_home: "{{ db_list[db_name].oracle_home }}"
+      oracle_home_gold: "{{ db_list[db_name].oracle_home_gold }}"
+      oracle_base: "{{ db_list[db_name].oracle_base }}"
+      oracle_owner: "{{ db_list[db_name].oracle_owner }}"
+      oracle_db_group: "{{ db_list[db_name].oracle_db_group }}"
+      master_node: "{{ db_list[db_name].master_node }}"
+      sudo: "{{ db_list[db_name].sudo }}"
+    tags: environment_source
+
+  - set_fact:
+      second_node: "{{ db_list[db_name].second_node }}"
+    when: db_list[db_name].second_node is defined
+
+  - set_fact:
+      ebs122_flag: "{{ db_list[db_name].ebs122_flag }}"
+    when: db_list[db_name].ebs122_flag is defined
+
+  - set_fact:
+      ebs_flag: "{{ db_list[db_name].ebs_flag }}"
+    when: db_list[db_name].ebs_flag is defined
+
+  - set_fact:
+      oneoff_patch_id: "{{ db_list[db_name].oneoff_patch_id }}"
+    when: db_list[db_name].oneoff_patch_id is defined
+
+  - debug: var=db_version
+  - debug: var=oracle_home
+  - debug: var=oracle_home_gold
+  - debug: var=oracle_base
+  - debug: var=oracle_owner
+  - debug: var=oracle_db_group
+  - debug: var=master_node
+  - debug: var=second_node
+  - debug: var=patch_dir
+  - debug: var=oneoff_patch_id
+  - debug: var=ebs122_flag
+  - debug: var=ebs_flag
+  - debug: var=sudo
+
+
+  - name: setup master node
+    set_fact:
+      master: true
+      second: false
+    when: "'{{ master_node }}.tcc.etn.com' == '{{ inventory_hostname }}'"
+    tags: environment_source
+
+  - name: setup second node
+    set_fact:
+      second: true
+      master: false
+    when:
+      - "'{{ second_node }}.tcc.etn.com' == '{{ inventory_hostname }}'"
+      - second_node is defined
+    tags: environment_source
+
+
+  - stat: path=/edm/Rohit/ansible_patch/{{ db_name }}
+    register: checker_file_directory
+    when: master|bool == true or second|bool == true
+
+  - name: create directory for checker file
+    action: shell mkdir /edm/Rohit/ansible_patch/{{ db_name }}
+    when: master|bool == true and checker_file_directory.stat.exists == false
+
+  - set_fact:
+      checker_location: /edm/Rohit/ansible_patch/{{ db_name }}
+      
+  - stat: path={{ checker_location }}/{{ db_name }}_prechecks_completed
+    register: prechecks_completion_checker
+    when: master|bool == true or second|bool == true
+
+  - stat: path={{ checker_location }}/{{ db_name }}_blackout_completed
+    register: blackout_completion_checker
+    when: master|bool == true or second|bool == true
+
+  - stat: path={{ checker_location }}/{{ db_name }}_stop_standby_recovery_completed
+    register: stop_standby_recovery_completion_checker
+    when: master|bool == true or second|bool == true
+
+  - stat: path={{ checker_location }}/{{ db_name }}_stop_db_completed
+    register: stop_db_completion_checker
+    when: master|bool == true or second|bool == true
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_backup_oh_node1_completed
+  #   register: backup_oh_completion_checker_node1
+  #   when: master|bool == true or second|bool == true
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_backup_oh_node2_completed
+  #   register: backup_oh_completion_checker_node2
+  #   when: master|bool == true or second|bool == true
+
+  - stat: path={{ checker_location }}/{{ db_name }}_remove_oh_node1_completed
+    register: remove_oh_completion_checker_node1
+    when: master|bool == true or second|bool == true
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_remove_oh_node2_completed
+  #   register: remove_oh_completion_checker_node2
+  #   when: master|bool == true or second|bool == true
+
+  - stat: path={{ checker_location }}/{{ db_name }}_restore_goldimage_oh_node1_completed
+    register: restore_goldimage_oh_completion_checker_node1
+    when: master|bool == true or second|bool == true
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_restore_goldimage_oh_node2_completed
+  #   register: restore_goldimage_oh_completion_checker_node2
+  #   when: master|bool == true or second|bool == true
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_restore_require_config_node1_completed
+  #   register: restore_config_oh_completion_checker_node1
+  #   when: master|bool == true or second|bool == true
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_restore_require_config_node2_completed
+  #   register: restore_config_oh_completion_checker_node2
+  #   when: master|bool == true or second|bool == true
+
+  - stat: path={{ checker_location }}/{{ db_name }}_detach_oh_completed
+    register: detach_oh_completion_checker
+    when: master|bool == true or second|bool == true
+
+  - stat: path={{ checker_location }}/{{ db_name }}_run_clone_node1_completed
+    register: run_clone_node1_completion_checker
+    when: master|bool == true or second|bool == true
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_run_clone_node2_completed
+  #   register: run_clone_node2_completion_checker
+  #   when: master|bool == true or second|bool == true
+
+  - stat: path={{ checker_location }}/{{ db_name }}_run_root_node1_completed
+    register: run_root_node1_completion_checker
+    when: master|bool == true or second|bool == true
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_run_root_node2_completed
+  #   register: run_root_node2_completion_checker
+  #   when: master|bool == true or second|bool == true
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_start_db_node1_completed
+  #   register: start_db_node1_completion_checker
+  #   when: master|bool == true or second|bool == true
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_db_verbose_known_fix_completed
+  #   register: db_verbose_known_fix_completion_checker
+  #   when: master|bool == true or second|bool == true
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_compile_invalid_completed
+  #   register: compile_invalid_completion_checker
+  #   when: master|bool == true or second|bool == true
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_database_verbose_completed
+  #   register: database_verbose_node1_completion_checker
+  #   when: master|bool == true or second|bool == true
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_stop_db_node1_completed
+  #   register: stop_db_node1_completion_checker
+  #   when: master|bool == true or second|bool == true
+
+
+  - stat: path={{ checker_location }}/{{ db_name }}_oneoff_apply_node1_completed
+    register: oneoff_node1_completion_checker
+    when: master|bool == true or second|bool == true
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_oneoff_apply_node2_completed
+  #   register: oneoff_node2_completion_checker
+  #   when: master|bool == true or second|bool == true
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_ebs122_etcc_checker_node1_completed
+  #   register: ebs122_etcc_checker_node1_completion_checker
+  #   when: master|bool == true or second|bool == true
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_ebs122_etcc_checker_node2_completed
+  #   register: ebs122_etcc_checker_node2_completion_checker
+  #   when: master|bool == true or second|bool == true
+
+  - stat: path={{ checker_location }}/{{ db_name }}_start_db_completed
+    register: start_db_completion_checker
+    when: master|bool == true or second|bool == true
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_post_checks_completed
+  #   register: post_checks_completion_checker
+  #   when: master|bool == true or second|bool == true
+
+  - stat: path={{ checker_location }}/{{ db_name }}_start_standby_recovery_completed
+    register: start_standby_recovery_completion_checker
+    when: master|bool == true or second|bool == true
+
+  - stat: path={{ checker_location }}/{{ db_name }}_remove_db_blackout_completed
+    register: remove_db_blackout_completion_checker
+    when: master|bool == true or second|bool == true
+
+############################################################
+
+
+  - name: verify database status startup pre patching
+    action: shell export ORACLE_HOME='{{ oracle_home }}'; $ORACLE_HOME/bin/srvctl status database -d {{ db_name }} -v | grep -i "is running" | wc -l
+    register: verify_db_status_startup_pre_patch
+    failed_when: verify_db_status_startup_pre_patch.stdout | int < 1
+    when: master|bool == true and prechecks_completion_checker.stat.exists == false
+    tags: prechecks
+
+  # - name: get db level backup details
+  #   action: shell export ORACLE_SID={{ db_name }}1; export ORACLE_HOME={{ oracle_home }}; {{ oracle_home }}/bin/sqlplus -s "/ as sysdba" @{{ scripts_loc }}/get_db_backup_details.sql | grep "BACKUP_STATUS=0" | wc -l
+  #   register: backup_status
+  #   failed_when: backup_status.stdout | int > 0
+  #   when: master|bool == true and prechecks_completion_checker.stat.exists == false
+  #   tags: prechecks
+
+  # - name: get invalid object details
+  #   action: shell export ORACLE_SID={{ db_name }}1; export ORACLE_HOME={{ oracle_home }}; {{ oracle_home }}/bin/sqlplus -s "/ as sysdba" @{{ scripts_loc }}/get_invalid_objects_details.sql
+  #   register: invalid_object_status
+  #   when: master|bool == true and prechecks_completion_checker.stat.exists == false
+  #   tags: prechecks
+
+  # - name: get dba components details
+  #   action: shell export ORACLE_SID={{ db_name }}1; export ORACLE_HOME={{ oracle_home }}; {{ oracle_home }}/bin/sqlplus -s "/ as sysdba" @{{ scripts_loc }}/get_dba_components_details.sql
+  #   register: dba_components_status
+  #   when: master|bool == true and prechecks_completion_checker.stat.exists == false
+  #   tags: prechecks
+
+  # - name: get JAVAVM components details
+  #   action: shell export ORACLE_SID={{ db_name }}1; export ORACLE_HOME={{ oracle_home }}; {{ oracle_home }}/bin/sqlplus -s "/ as sysdba" @{{ scripts_loc }}/get_dba_components_details.sql | grep JAVAVM | awk '{ print $7}'
+  #   register: javavm_components_status
+  #   when: master|bool == true and prechecks_completion_checker.stat.exists == false
+  #   tags: prechecks
+
+  # - name: prechecks completion checker
+  #   action: shell touch {{ checker_location }}/{{ db_name }}_prechecks_completed
+  #   when: master|bool == true and prechecks_completion_checker.stat.exists == false
+  #   tags: prechecks
+
+  - stat: path={{ checker_location }}/{{ db_name }}_prechecks_completed
+    register: prechecks_completion_checker
+    when: master|bool == true or second|bool == true
+
+############################################################
+  - name: put database in OEM blackput 
+    action: shell {{ orawhq_bin }}/start_blackout.sh {{ db_name }}
+    register: put_db_blackout
+    failed_when: put_db_blackout.rc != 0
+    when: master|bool == true and blackout_completion_checker.stat.exists == false
+    tags: put_db_blackout
+
+  - name: blackout completion checker
+    action: shell touch {{ checker_location }}/{{ db_name }}_blackout_completed
+    when:  master|bool == true and blackout_completion_checker.stat.exists == false
+    tags: put_db_blackout
+
+  - stat: path={{ checker_location }}/{{ db_name }}_blackout_completed
+    register: blackout_completion_checker
+    when: master|bool == true
+
+
+############################################################
+
+  - name: stop standby recovery 
+    action: shell export ORACLE_SID={{ db_name }}; export ORACLE_HOME={{ oracle_home }}; echo "recover managed standby database cancel;" | {{ oracle_home }}/bin/sqlplus -s "/ as sysdba"
+    register: stop_standby_recovery
+    when: master|bool == true and stop_standby_recovery_completion_checker.stat.exists == false
+    tags: stop_standby_recovery
+
+  - name: stop standby recovery checker
+    action: shell touch {{ checker_location }}/{{ db_name }}_stop_standby_recovery_completed
+    when: master|bool == true and stop_standby_recovery_completion_checker.stat.exists == false
+    tags: stop_standby_recovery
+
+  - stat: path={{ checker_location }}/{{ db_name }}_stop_standby_recovery_completed
+    register: stop_standby_recovery_completion_checker
+    when: master|bool == true
+
+############################################################
+
+  - name: stop database using commonization script
+    shell: . .bash_profile && $HOME/admin/bin/stop_db.sh {{ db_name }}
+    register: stop_db
+    #failed_when: stop_db.rc != 0
+    when: master|bool == true and stop_db_completion_checker.stat.exists == false
+    tags: stop_db
+    args:
+     executable: /bin/bash
+############################################################
+#  - name: stop database using srvctl
+#    action: shell export ORACLE_HOME='{{ oracle_home }}'; $ORACLE_HOME/bin/srvctl stop database -d {{ db_name }}
+#    when: master|bool == true and stop_db_completion_checker.stat.exists == false
+#    tags: stop_db
+  
+  - name: verify database status shutdown
+    action: shell export ORACLE_HOME='{{ oracle_home }}'; $ORACLE_HOME/bin/srvctl status database -d {{ db_name }} -v | grep -i "is not running" | wc -l
+    register: verify_db_status_shutdown
+    failed_when: verify_db_status_shutdown.stdout | int < 2
+    when: master|bool == true and stop_db_completion_checker.stat.exists == false
+    tags: stop_db
+
+  - name: stop database completion checker
+    action: shell touch {{ checker_location }}/{{ db_name }}_stop_db_completed
+    when: master|bool == true and stop_db_completion_checker.stat.exists == false
+    tags: stop_db
+
+  - stat: path={{ checker_location }}/{{ db_name }}_stop_db_completed
+    register: stop_db_completion_checker
+    when: master|bool == true or second|bool == true
+
+############################################################
+
+  # - name: backup oracle home node 1
+  #   action: shell cd {{ oracle_home }}; tar -cvpzf {{ backup_loc }}/backup_oh_{{ db_name }}_{{ inventory_hostname }}.tar . --exclude=lost+found 
+  #   register: db_home_backup_node1
+  #   failed_when: db_home_backup_node1.rc != 0
+  #   when: master|bool == true and backup_oh_completion_checker_node1.stat.exists == false
+  #   tags: backup_oh_node1
+  #   ignore_errors: True
+
+  # - name: backup oracle home completion checker node 1
+  #   action: shell touch {{ checker_location }}/{{ db_name }}_backup_oh_node1_completed
+  #   when: master|bool == true and backup_oh_completion_checker_node1.stat.exists == false
+  #   tags: backup_oh_node1
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_backup_oh_node1_completed
+  #   register: backup_oh_completion_checker_node1
+  #   when: master|bool == true
+
+############################################################
+
+  - name: Check if a stop db file exists and fail task if it does not exists
+    action: shell ls {{ checker_location }}/{{ db_name }}_stop_db_completed
+    register: result
+    failed_when: result.rc != 0
+    when: second|bool == true
+
+############################################################
+  # - name: backup oracle home node 2
+  #   action: shell cd {{ oracle_home }}; tar -cvpzf {{ backup_loc }}/backup_oh_{{ db_name }}_{{ inventory_hostname }}.tar . --exclude=lost+found 
+  #   register: db_home_backup_node2
+  #   failed_when: db_home_backup_node2.rc != 0 and stop_db_completion_checker.stat.exists == false
+  #   when: second|bool == true and backup_oh_completion_checker_node2.stat.exists == false and stop_db_completion_checker.stat.exists == true
+  #   tags: backup_oh_node2
+  #   ignore_errors: True
+
+  # - name: backup oracle home completion checker node 2
+  #   action: shell touch {{ checker_location }}/{{ db_name }}_backup_oh_node2_completed
+  #   when: second|bool == true and backup_oh_completion_checker_node2.stat.exists == false
+  #   tags: backup_oh_node2
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_backup_oh_node2_completed 
+  #   register: backup_oh_completion_checker_node2
+  #   when: second|bool == true
+
+############################################################
+
+  - name: Remove oracle home on node 1 for ebs
+    action: shell cd {{ oracle_home }}; find . -maxdepth 1 ! -name "dbs" ! -name "network" ! -name "appsutil" ! -name "*.env" ! -name . -exec rm -rf {} \;
+    register: remove_oracle_home_node1
+    failed_when: remove_oracle_home_node1.rc != 0
+    when:
+      - master|bool == true
+      - remove_oh_completion_checker_node1.stat.exists == false
+      - ebs_flag is defined
+    #when: master|bool == true and remove_oh_completion_checker_node1.stat.exists == false
+    tags: remove_oh_node1
+    ignore_errors: True
+
+  - name: Remove oracle home on node 1 for non-ebs
+    action: shell cd {{ oracle_home }}; find . -maxdepth 1 ! -name "dbs" ! -name "network" ! -name . -exec rm -rf {} \;
+    register: remove_oracle_home_node1
+    failed_when: remove_oracle_home_node1.rc != 0
+    when:
+      - master|bool == true
+      - remove_oh_completion_checker_node1.stat.exists == false
+      - ebs_flag is not defined
+    #when: master|bool == true and remove_oh_completion_checker_node1.stat.exists == false
+    tags: remove_oh_node1
+    ignore_errors: True
+
+  - name: Remove oracle home on node 1 checker
+    action: shell touch {{ checker_location }}/{{ db_name }}_remove_oh_node1_completed
+    when: master|bool == true and remove_oh_completion_checker_node1.stat.exists == false
+    tags: remove_oh_node1
+
+  - stat: path={{ checker_location }}/{{ db_name }}_remove_oh_node1_completed
+    register: remove_oh_completion_checker_node1
+    when: master|bool == true
+
+
+############################################################
+
+  # - name: Remove oracle home on node 2 for ebs
+  #   action: shell cd {{ oracle_home }}; find . -maxdepth 1 ! -name "dbs" ! -name "network" ! -name "appsutil" ! -name "*.env" ! -name . -exec rm -rf {} \;
+  #   register: remove_oracle_home_node2
+  #   failed_when: remove_oracle_home_node2.rc != 0
+  #   when:
+  #     - second|bool == true
+  #     - remove_oh_completion_checker_node2.stat.exists == false
+  #     - ebs_flag is defined
+  #   #when: master|bool == true and remove_oh_completion_checker_node1.stat.exists == false
+  #   tags: remove_oh_node2
+  #   ignore_errors: True
+
+  # - name: Remove oracle home on node 2 for non-ebs
+  #   action: shell cd {{ oracle_home }}; find . -maxdepth 1 ! -name "dbs" ! -name "network" ! -name . -exec rm -rf {} \;
+  #   register: remove_oracle_home_node2
+  #   failed_when: remove_oracle_home_node2.rc != 0
+  #   when:
+  #     - second|bool == true
+  #     - remove_oh_completion_checker_node2.stat.exists == false
+  #     - ebs_flag is not defined
+  #   #when: master|bool == true and remove_oh_completion_checker_node1.stat.exists == false
+  #   tags: remove_oh_node2
+  #   ignore_errors: True
+
+  # - name: Remove oracle home on node 2 checker
+  #   action: shell touch {{ checker_location }}/{{ db_name }}_remove_oh_node2_completed
+  #   when: second|bool == true and remove_oh_completion_checker_node2.stat.exists == false
+  #   tags: remove_oh_node2
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_remove_oh_node2_completed
+  #   register: remove_oh_completion_checker_node2
+  #   when: second|bool == true
+
+############################################################
+
+  - name: restore oracle home gold image node 1
+    action: shell cd {{ oracle_home }}; tar -xvzf {{ oracle_home_gold }} --exclude 'dbs' --exclude 'network' --exclude 'appsutil'
+    register: restore_db_home_node1
+    failed_when: restore_db_home_node1.rc != 0
+    when: master|bool == true and restore_goldimage_oh_completion_checker_node1.stat.exists == false
+    tags: restore_oh_node1
+
+  - name: restore oracle home gold image node 1 checker
+    action: shell touch {{ checker_location }}/{{ db_name }}_restore_goldimage_oh_node1_completed
+    when: master|bool == true and restore_goldimage_oh_completion_checker_node1.stat.exists == false
+    tags: restore_oh_node1
+
+  - stat: path={{ checker_location }}/{{ db_name }}_restore_goldimage_oh_node1_completed
+    register: restore_goldimage_oh_completion_checker_node1
+    when: master|bool == true
+
+############################################################
+  # - name: restore oracle home gold image node 2
+  #   action: shell cd {{ oracle_home }}; tar -xvzf {{ oracle_home_gold }} --exclude 'dbs' --exclude 'network' --exclude 'appsutil'
+  #   register: restore_db_home_node2
+  #   failed_when: restore_db_home_node2.rc != 0
+  #   when: second|bool == true and restore_goldimage_oh_completion_checker_node2.stat.exists == false
+  #   tags: restore_oh_node2
+
+  # - name: restore oracle home gold image node 2 checker
+  #   action: shell touch {{ checker_location }}/{{ db_name }}_restore_goldimage_oh_node2_completed
+  #   when: second|bool == true and restore_goldimage_oh_completion_checker_node2.stat.exists == false
+  #   tags: restore_oh_node2
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_restore_goldimage_oh_node2_completed
+  #   register: restore_goldimage_oh_completion_checker_node2
+  #   when: second|bool == true
+
+############################################################
+
+  # - name: restore required config from backup oracle home of ebs node 1
+  #   action: shell cd {{ oracle_home }}; tar -xvzf {{ backup_loc }}/backup_oh_{{ db_name }}_{{ inventory_hostname }}.tar ./{{ item }}
+  #   register: restore_req_config_node1
+  #   failed_when: restore_req_config_node1.rc != 0
+  #   with_items:
+  #     - dbs
+  #     - network/admin
+  #     - appsutil
+  #     - "*env"
+  #   when:
+  #   - master|bool == true
+  #   - restore_config_oh_completion_checker_node1.stat.exists == false
+  #   - ebs_flag is defined
+  #   tags: restore_require_config_node1
+
+  # - name: restore required config from backup oracle home of non-ebs node 1
+  #   action: shell cd {{ oracle_home }}; tar -xvzf {{ backup_loc }}/backup_oh_{{ db_name }}_{{ inventory_hostname }}.tar ./{{ item }}
+  #   register: restore_req_config_node1
+  #   failed_when: restore_req_config_node1.rc != 0
+  #   with_items:
+  #     - dbs
+  #     - network/admin
+  #   when:
+  #   - master|bool == true
+  #   - restore_config_oh_completion_checker_node1.stat.exists == false
+  #   - ebs_flag is not defined
+  #   tags: restore_require_config_node1
+
+#   - name: restore required config from backup oracle home node 1 checker
+#     action: shell touch {{ checker_location }}/{{ db_name }}_restore_require_config_node1_completed
+#     when: master|bool == true and restore_config_oh_completion_checker_node1.stat.exists == false
+#     tags: restore_require_config_node1
+
+#   - stat: path={{ checker_location }}/{{ db_name }}_restore_require_config_node1_completed
+#     register: restore_config_oh_completion_checker_node1
+#     when: master|bool == true
+
+# ############################################################
+
+
+#   - name: restore required config from backup oracle home of ebs node 2
+#     action: shell cd {{ oracle_home }}; tar -xvzf {{ backup_loc }}/backup_oh_{{ db_name }}_{{ inventory_hostname }}.tar ./{{ item }}
+#     register: restore_req_config_node2
+#     failed_when: restore_req_config_node2.rc != 0
+#     with_items:
+#       - dbs
+#       - network/admin
+#       - appsutil
+#       - "*env"
+#     when:
+#     - second|bool == true
+#     - restore_config_oh_completion_checker_node2.stat.exists == false
+#     - ebs_flag is defined
+#     #when: second|bool == true and restore_config_oh_completion_checker_node2.stat.exists == false
+#     tags: restore_require_config_node2
+
+#   - name: restore required config from backup oracle home of non-ebs node 2
+#     action: shell cd {{ oracle_home }}; tar -xvzf {{ backup_loc }}/backup_oh_{{ db_name }}_{{ inventory_hostname }}.tar ./{{ item }}
+#     register: restore_req_config_node2
+#     failed_when: restore_req_config_node2.rc != 0
+#     with_items:
+#       - dbs
+#       - network/admin
+#     when:
+#     - second|bool == true
+#     - restore_config_oh_completion_checker_node2.stat.exists == false
+#     - ebs_flag is not defined
+#     #when: second|bool == true and restore_config_oh_completion_checker_node2.stat.exists == false
+#     tags: restore_require_config_node2
+
+#   - name: restore required config from backup oracle home node 2 checker
+#     action: shell touch {{ checker_location }}/{{ db_name }}_restore_require_config_node2_completed
+#     when: second|bool == true and restore_config_oh_completion_checker_node2.stat.exists == false
+#     tags: restore_require_config_node2
+
+#   - stat: path={{ checker_location }}/{{ db_name }}_restore_require_config_node2_completed
+#     register: restore_config_oh_completion_checker_node2
+#     when: master|bool == true
+
+
+############################################################
+  - name: Detach oracle home
+    shell: cd {{ oracle_home }}/oui/bin; ./runInstaller -detachHome ORACLE_HOME={{ oracle_home }} invPtrLoc=/etc/oraInst.loc
+    register: detach_oh
+    failed_when: detach_oh.rc != 0
+    when: master|bool == true and detach_oh_completion_checker.stat.exists == false
+    tags: detach_oh_node1
+
+  - name: Detach oracle home checker
+    action: shell touch {{ checker_location }}/{{ db_name }}_detach_oh_completed
+    when: master|bool == true and detach_oh_completion_checker.stat.exists == false
+    tags: detach_oh_node1
+
+  - stat: path={{ checker_location }}/{{ db_name }}_detach_oh_completed
+    register: detach_oh_completion_checker
+    when: master|bool == true
+
+############################################################
+
+
+  - name: Run clone.pl node 1
+    shell: perl {{ oracle_home }}/clone/bin/clone.pl -silent ORACLE_BASE={{ oracle_base }} OSDBA_GROUP={{ oracle_db_group }} OSOPER_GROUP={{ oracle_db_group }} ORACLE_HOME={{ oracle_home }} ORACLE_HOME_NAME=OraDB121Home_{{ db_name }} -O'"CLUSTER_NODES={"{{ master_node }},{{ second_node }}"}"' -O'"LOCAL_NODE={{ master_node }}"'
+    register: run_clone_node1
+    failed_when: run_clone_node1.rc != 0
+    when: master|bool == true and run_clone_node1_completion_checker.stat.exists == false
+    tags: run_clone_node1
+
+  - name: Run clone.pl node 1 checker
+    action: shell touch {{ checker_location }}/{{ db_name }}_run_clone_node1_completed
+    when: master|bool == true and run_clone_node1_completion_checker.stat.exists == false
+    tags: run_clone_node1
+
+  - stat: path={{ checker_location }}/{{ db_name }}_run_clone_node1_completed
+    register: run_clone_node1_completion_checker
+    when: master|bool == true
+
+############################################################
+
+  # - name: Check if a detach oh file exists and fail task if it does not exists
+  #   action: shell ls {{ checker_location }}/{{ db_name }}_detach_oh_completed
+  #   register: result
+  #   failed_when: result.rc != 0
+  #   when: second|bool == true
+
+  # - name: Run clone.pl node 2
+  #   shell: perl {{ oracle_home }}/clone/bin/clone.pl -silent ORACLE_BASE={{ oracle_base }} OSDBA_GROUP={{ oracle_db_group }} OSOPER_GROUP={{ oracle_db_group }} ORACLE_HOME={{ oracle_home }} ORACLE_HOME_NAME=OraDB121Home_{{ db_name }} -O'"CLUSTER_NODES={"{{ master_node }},{{ second_node }}"}"' -O'"LOCAL_NODE={{ second_node }}"'
+  #   register: run_clone_node2
+  #   failed_when: run_clone_node2.rc != 0
+  #   when: second|bool == true and run_clone_node2_completion_checker.stat.exists == false
+  #   tags: run_clone_node2
+
+  # - name: Run clone.pl node 2 checker
+  #   action: shell touch {{ checker_location }}/{{ db_name }}_run_clone_node2_completed
+  #   when: second|bool == true and run_clone_node2_completion_checker.stat.exists == false
+  #   tags: run_clone_node2
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_run_clone_node2_completed
+  #   register: run_clone_node2_completion_checker
+  #   when: second|bool == true
+
+############################################################
+
+
+  - name: Run root.sh node 1
+    action: shell {{ sudo }} /edm/DONOTDELETE/ansible_root_files/custom_root_linux_121.sh {{ db_name }} {{ oracle_home }} {{ oracle_owner }} {{ oracle_db_group }}
+    register: run_root_sh_node1
+    when: master|bool == true and run_root_node1_completion_checker.stat.exists == false
+    tags: run_root_node1
+
+  - name: Run root.sh node 1 checker
+    action: shell touch {{ checker_location }}/{{ db_name }}_run_root_node1_completed
+    when: master|bool == true and run_root_node1_completion_checker.stat.exists == false
+    tags: run_root_node1
+
+
+  - stat: path={{ checker_location }}/{{ db_name }}_run_root_node1_completed
+    register: run_root_node1_completion_checker
+    when: master|bool == true
+
+############################################################
+
+  # - name: Run root.sh node 2
+  #   action: shell {{ sudo }} /edm/DONOTDELETE/ansible_root_files/custom_root_linux_121.sh {{ db_name }} {{ oracle_home }} {{ oracle_owner }} {{ oracle_db_group }}
+  #   register: run_root_sh_node2
+  #   when: second|bool == true and run_root_node2_completion_checker.stat.exists == false
+  #   tags: run_root_node2
+
+  # - name: Run root.sh node 2 checker
+  #   action: shell touch {{ checker_location }}/{{ db_name }}_run_root_node2_completed
+  #   when: second|bool == true and run_root_node2_completion_checker.stat.exists == false
+  #   tags: run_root_node2
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_run_root_node2_completed
+  #   register: run_root_node2_completion_checker
+  #   when: second|bool == true
+
+############################################################
+
+  # - name: Check if a cloning completed on node 2
+  #   action: shell ls {{ checker_location }}/{{ db_name }}_run_root_node2_completed
+  #   register: result
+  #   failed_when: result.rc != 0
+  #   when: master|bool == true
+
+############################################################
+  # - name: startup database node 1
+  #   action: shell export ORACLE_SID={{ db_name }}1; export ORACLE_HOME={{ oracle_home }}; echo "startup;" | {{ oracle_home }}/bin/sqlplus -s "/ as sysdba" | grep "Database opened" | wc -l
+  #   register: startup_status
+  #   failed_when: startup_status.stdout | int < 1
+  #   when: master|bool == true and start_db_node1_completion_checker.stat.exists == false
+  #   tags: start_db_node1
+
+  # - name: startup database node 1 checker
+  #   action: shell touch {{ checker_location }}/{{ db_name }}_start_db_node1_completed
+  #   when: master|bool == true and start_db_node1_completion_checker.stat.exists == false
+  #   tags: start_db_node1
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_start_db_node1_completed
+  #   register: start_db_node1_completion_checker
+  #   when: master|bool == true
+
+############################################################
+
+
+#   - name: database verbose known issue fix
+#     action: shell export ORACLE_SID={{ db_name }}1; export ORACLE_HOME={{ oracle_home }}; {{ oracle_home }}/bin/sqlplus -s "/ as sysdba" @{{ scripts_loc }}/datapatch_verbose_fix.sql
+#     register: database_verbose_fix
+#     when: master|bool == true and db_verbose_known_fix_completion_checker.stat.exists == false
+#     tags: database_verbose_known_fix_node1
+
+#   - name: database verbose known issue fix checker
+#     action: shell touch {{ checker_location }}/{{ db_name }}_db_verbose_known_fix_completed
+#     when: master|bool == true and db_verbose_known_fix_completion_checker.stat.exists == false
+#     tags: database_verbose_known_fix_node1
+
+#   - stat: path={{ checker_location }}/{{ db_name }}_db_verbose_known_fix_completed
+#     register: db_verbose_known_fix_completion_checker
+#     when: master|bool == true
+
+# ############################################################
+
+#   - name: compile invalid objects
+#     action: shell export ORACLE_SID={{ db_name }}1; export ORACLE_HOME={{ oracle_home }}; echo "exit;" | {{ oracle_home }}/bin/sqlplus -s "/ as sysdba" @{{ oracle_home }}/rdbms/admin/utlrp.sql
+#     register: compile_invalid_object
+#     when: master|bool == true and compile_invalid_completion_checker.stat.exists == false
+#     tags: compile_invalid
+
+#   - name: compile invalid objects checker
+#     action: shell touch {{ checker_location }}/{{ db_name }}_compile_invalid_completed
+#     when: master|bool == true and compile_invalid_completion_checker.stat.exists == false
+#     tags: compile_invalid
+
+#   - stat: path={{ checker_location }}/{{ db_name }}_compile_invalid_completed
+#     register: compile_invalid_completion_checker
+#     when: master|bool == true
+
+############################################################
+
+
+  # - name: run database verbose
+  #   action: shell export ORACLE_SID={{ db_name }}1; export ORACLE_HOME={{ oracle_home }}; $ORACLE_HOME/OPatch/datapatch -verbose
+  #   register: database_verbose
+  #   failed_when: database_verbose.rc != 0
+  #   when: master|bool == true and database_verbose_node1_completion_checker.stat.exists == false
+  #   tags: database_verbose_node1
+
+  # - name: run database verbose checker
+  #   action: shell touch {{ checker_location }}/{{ db_name }}_database_verbose_completed
+  #   when: master|bool == true and database_verbose_node1_completion_checker.stat.exists == false
+  #   tags: database_verbose_node1
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_database_verbose_completed
+  #   register: database_verbose_node1_completion_checker
+  #   when: master|bool == true
+
+############################################################
+
+
+  # - name: shutdown database
+  #   action: shell export ORACLE_SID={{ db_name }}1; export ORACLE_HOME={{ oracle_home }}; echo "shutdown immediate;" | {{ oracle_home }}/bin/sqlplus -s "/ as sysdba" | grep "ORACLE instance shut down" | wc -l
+  #   register: shutdown_status
+  #   failed_when: shutdown_status.stdout | int < 1
+  #   when: master|bool == true and stop_db_node1_completion_checker.stat.exists == false
+  #   tags: stop_db_node1
+
+  # - name: shutdown database checker
+  #   action: shell touch {{ checker_location }}/{{ db_name }}_stop_db_node1_completed
+  #   when: master|bool == true and stop_db_node1_completion_checker.stat.exists == false
+  #   tags: stop_db_node1
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_stop_db_node1_completed
+  #   register: stop_db_node1_completion_checker
+  #   when: master|bool == true
+
+############################################################
+  - name: apply one-off patches on node 1
+    action: shell export ORACLE_SID={{ db_name }}; export ORACLE_HOME={{ oracle_home }}; $ORACLE_HOME/OPatch/opatch napply {{ patch_dir }} -id {{ oneoff_patch_id }} -silent
+    register: apply_psu_node1
+    failed_when: "'OPatch succeeded' not in apply_psu_node1.stdout"
+    when:
+    - master|bool == true
+    - oneoff_node1_completion_checker.stat.exists == false
+    - oneoff_patch_id is defined
+   # when: (master|bool == true) and ( oneoff_node1_completion_checker.stat.exist == false) and ( oneoff_patch_id is defined )
+    tags: oneoff_node1
+
+  - name: one-off patch application checker node1
+    action: shell touch {{ checker_location }}/{{ db_name }}_oneoff_apply_node1_completed
+    when:
+    - master|bool == true
+    - oneoff_node1_completion_checker.stat.exists == false
+    - oneoff_patch_id is defined
+    tags: oneoff_node1
+
+  - stat: path={{ checker_location }}/{{ db_name }}_stop_db_node1_completed
+    register: oneoff_node1_completion_checker
+    when: master|bool == true
+    tags: oneoff_node1
+
+############################################################
+
+  # - name: apply one-off patches on node 2
+  #   action: shell export ORACLE_SID={{ db_name }}2; export ORACLE_HOME={{ oracle_home }}; $ORACLE_HOME/OPatch/opatch napply {{ patch_dir }} -id {{ oneoff_patch_id }} -silent
+  #   register: apply_psu_node2
+  #   failed_when: "'OPatch succeeded' not in apply_psu_node2.stdout"
+  #   when:
+  #   - second|bool == true
+  #   - oneoff_node2_completion_checker.stat.exists == false
+  #   - oneoff_patch_id is defined
+  #   tags: oneoff_node2
+
+  # - name: one-off patch application checker node2
+  #   action: shell touch {{ checker_location }}/{{ db_name }}_oneoff_apply_node2_completed
+  #   when:
+  #   - second|bool == true
+  #   - oneoff_node2_completion_checker.stat.exists == false
+  #   - oneoff_patch_id is defined
+  #   tags: oneoff_node2
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_oneoff_apply_node2_completed
+  #   register: oneoff_node2_completion_checker
+  #   when: second|bool == true
+  #   tags: oneoff_node2
+
+############################################################
+
+
+  - name: start database using commonization script
+    shell: . .bash_profile && $HOME/admin/bin/start_db.sh {{ db_name }}
+    when: master|bool == true and start_db_completion_checker.stat.exists == false
+    tags: start_db
+    args:
+     executable: /bin/bash
+
+  - name: verify database status startup post patching
+    action: shell export ORACLE_HOME='{{ oracle_home }}'; $ORACLE_HOME/bin/srvctl status database -d {{ db_name }} -v | grep -i "is running" | wc -l
+    register: verify_db_status_startup_post_patch
+    failed_when: verify_db_status_startup_post_patch.stdout | int < 1
+    when: master|bool == true and start_db_completion_checker.stat.exists == false
+    tags: start_db
+
+  - name: start database using srvctl checker
+    action: shell touch {{ checker_location }}/{{ db_name }}_start_db_completed
+    when: master|bool and start_db_completion_checker.stat.exists == false
+    tags: start_db
+
+
+  - stat: path={{ checker_location }}/{{ db_name }}_start_db_completed
+    register: start_db_completion_checker
+    when: master|bool == true
+
+############################################################
+
+  # - name: ebs122 etcc checker execution on node 1
+  #   shell: . .bash_profile && eval {{ db_name }}_env && cd /ORACLE/media/OraApps_12.2.0/linux_86/17537119; ./checkDBpatch.sh contextfile=$CONTEXT_FILE
+  #   register: ebs122_etcc_checker_node1
+  #   failed_when: "'Stored Technology Codelevel Checker results in the database {{ db_name }} successfully' not in ebs122_etcc_checker_node1.stdout"
+  #   when:
+  #   - master|bool == true
+  #   - ebs122_etcc_checker_node1_completion_checker.stat.exists == false
+  #   - ebs122_flag is defined
+  #   tags: ebs122_etcc_node1
+  #   args:
+  #    executable: /bin/bash
+
+  # - name: ebs122 etcc checker node1
+  #   action: shell touch {{ checker_location }}/{{ db_name }}_ebs122_etcc_checker_node1_completed
+  #   when:
+  #   - master|bool == true
+  #   - ebs122_etcc_checker_node1_completion_checker.stat.exists == false
+  #   - ebs122_flag is defined
+  #   tags: ebs122_etcc_node1
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_ebs122_etcc_checker_node1_completed
+  #   register: ebs122_etcc_checker_node1_completion_checker
+  #   when: master|bool == true
+  #   tags: ebs122_etcc_node1
+
+
+############################################################
+
+  # - name: ebs122 etcc checker execution on node 2
+  #   shell: . .bash_profile && eval {{ db_name }}_env && cd /ORACLE/media/OraApps_12.2.0/linux_86/17537119; ./checkDBpatch.sh contextfile=$CONTEXT_FILE
+  #   register: ebs122_etcc_checker_node2
+  #   failed_when: "'Stored Technology Codelevel Checker results in the database {{ db_name }} successfully' not in ebs122_etcc_checker_node2.stdout"
+  #   when:
+  #   - second|bool == true
+  #   - ebs122_etcc_checker_node2_completion_checker.stat.exists == false
+  #   - ebs122_flag is defined
+  #   tags: ebs122_etcc_node2
+  #   args:
+  #    executable: /bin/bash
+
+
+  # - name: ebs122 etcc checker node2
+  #   action: shell touch {{ checker_location }}/{{ db_name }}_ebs122_etcc_checker_node2_completed
+  #   when:
+  #   - second|bool == true
+  #   - ebs122_etcc_checker_node2_completion_checker.stat.exists == false
+  #   - ebs122_flag is defined
+  #   tags: ebs122_etcc_node2
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_ebs122_etcc_checker_node2_completed
+  #   register: ebs122_etcc_checker_node2_completion_checker
+  #   when: second|bool == true
+  #   tags: ebs122_etcc_node2
+
+
+############################################################
+
+  # - name: get dba components details post patching
+  #   action: shell export ORACLE_SID={{ db_name }}1; export ORACLE_HOME={{ oracle_home }}; {{ oracle_home }}/bin/sqlplus -s "/ as sysdba" @{{ scripts_loc }}/get_dba_components_details.sql
+  #   register: dba_components_status_post
+  #   when: master|bool == true and post_checks_completion_checker.stat.exists == false
+  #   tags: post_checks
+
+  # - name: get JAVAVM components details post patching
+  #   action: shell export ORACLE_SID={{ db_name }}1; export ORACLE_HOME={{ oracle_home }}; {{ oracle_home }}/bin/sqlplus -s "/ as sysdba" @{{ scripts_loc }}/get_dba_components_details.sql | grep JAVAVM | awk '{ print $7}'
+  #   register: javavm_components_status_post
+  #   when: master|bool == true and post_checks_completion_checker.stat.exists == false
+  #   tags: post_checks
+
+  # - name: get registry details post patching
+  #   action: shell export ORACLE_SID={{ db_name }}1; export ORACLE_HOME={{ oracle_home }}; {{ oracle_home }}/bin/sqlplus -s "/ as sysdba" @{{ scripts_loc }}/get_registry_details.sql
+  #   register: registry_status_post
+  #   when: master|bool == true and post_checks_completion_checker.stat.exists == false
+  #   tags: post_checks
+
+  # - name: post patching checker
+  #   action: shell touch {{ checker_location }}/{{ db_name }}_post_checks_completed
+  #   when: master|bool == true and post_checks_completion_checker.stat.exists == false
+  #   tags: post_checks
+
+  # - stat: path={{ checker_location }}/{{ db_name }}_post_checks_completed
+  #   register: post_checks_completion_checker
+  #   when: master|bool == true
+
+############################################################
+  - name: start standby recovery 
+    action: shell export ORACLE_SID={{ db_name }}; export ORACLE_HOME={{ oracle_home }}; echo "alter database recover managed standby database nodelay using current logfile disconnect;" | {{ oracle_home }}/bin/sqlplus -s "/ as sysdba"
+    register: start_standby_recovery
+    when: master|bool == true and start_standby_recovery_completion_checker.stat.exists == false
+    tags: start_standby_recovery
+
+  - name: stop standby recovery checker
+    action: shell touch {{ checker_location }}/{{ db_name }}_start_standby_recovery_completed
+    when: master|bool == true and start_standby_recovery_completion_checker.stat.exists == false
+    tags: start_standby_recovery
+
+  - stat: path={{ checker_location }}/{{ db_name }}_start_standby_recovery_completed
+    register: start_standby_recovery_completion_checker
+    when: master|bool == true
+
+############################################################
+
+  - name: remove database from OEM blackput 
+    action: shell {{ orawhq_bin }}/stop_blackout.sh {{ db_name }}
+    register: remove_db_blackout
+    failed_when: remove_db_blackout.rc != 0
+    when: master|bool == true and remove_db_blackout_completion_checker.stat.exists == false
+    tags: remove_db_blackout
+
+  - name: remove database from OEM blackput checker
+    action: shell touch {{ checker_location }}/{{ db_name }}_remove_db_blackout_completed
+    when: master|bool == true and remove_db_blackout_completion_checker.stat.exists == false
+    tags: remove_db_blackout
+
+  - stat: path={{ checker_location }}/{{ db_name }}_remove_db_blackout_completed
+    register: remove_db_blackout_completion_checker
+    when: master|bool == true
+
+
+############################################################
