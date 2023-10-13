@@ -17,13 +17,13 @@
   - stat: path={{ checker_location }}/{{ db_name }}_prechecks_completed
     register: prechecks_completion_checker
     
-#  - name: database precheck 
-#    shell: . .bash_profile && eval {{ db_name }} && /edm/DONOTDELETE/ansible_gold_image/clone_pre_patch.sh -d {{ db_name }}
-#    register: database_precheck
-#    failed_when: database_precheck.rc != 0 and prechecks_completion_checker.stat.exists == false
-#    tags: database_precheck
-#    args:
-#     executable: /bin/bash
+  - name: database precheck 
+    shell: . .bash_profile && eval {{ db_name }} && /edm/DONOTDELETE/ansible_gold_image/clone_pre_patch.sh -d {{ db_name }}
+    register: database_precheck
+    failed_when: database_precheck.rc != 0 and prechecks_completion_checker.stat.exists == false
+    tags: database_precheck
+    args:
+     executable: /bin/bash
 
   - name: Run precheck checker
     action: shell touch {{ checker_location }}/{{ db_name }}_prechecks_completed
