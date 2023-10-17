@@ -6,11 +6,7 @@
   - debug: var=inventory_hostname
   - debug: var=db_name
 
-  - name: Include all yaml files
-    include_vars:
-      dir: vars
-    tags: environment_source
-    
+ 
   - set_fact:
       checker_location: /edm/unify/gold/patch/{{ db_name }}
 
