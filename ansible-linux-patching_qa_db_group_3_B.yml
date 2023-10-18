@@ -1,0 +1,35 @@
+---
+- hosts: "{{ db_name }}"
+  gather_facts: False
+  remote_user: orawhq
+  tasks:
+  - debug: var=inventory_hostname
+  - debug: var=db_name
+
+ 
+  - set_fact:
+      checker_location: /edm/unify/gold/patch/{{ db_name }}
+
+  - stat: path={{ checker_location }}/{{ db_name }}_prechecks_completed
+    register: prechecks_completion_checker
+    
+  - name: database precheck 
+    shell: . .bash_profile && eval {{ db_name }} && /edm/DONOTDELETE/ansible_gold_image/clone_pre_patch.sh -d {{ db_name }}
+    register: database_precheck
+    failed_when: database_precheck.rc != 0 and prechecks_completion_checker.stat.exists == false
+    tags: database_precheck
+    args:
+     executable: /bin/bash
+
+  - name: Run precheck checker
+    action: shell touch {{ checker_location }}/{{ db_name }}_prechecks_completed
+    when: prechecks_completion_checker.stat.exists == false
+    tags: prepatch_checker
+    
+  - name: database patching 
+    shell: . .bash_profile && eval {{ db_name }} && /edm/DONOTDELETE/ansible_gold_image/clone_start_patch.sh -d {{ db_name }}
+    register: database_patch
+    failed_when: database_patch.rc != 0
+    tags: database_patch
+    args:
+     executable: /bin/bash
