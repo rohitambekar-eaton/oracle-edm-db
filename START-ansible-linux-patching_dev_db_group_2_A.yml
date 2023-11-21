@@ -1,6 +1,6 @@
 ---
 - name: Check if playbook executed previously
-  hosts: your_oracle_group
+  hosts: dev_db_group_2_A_nonITAR
   gather_facts: yes
 
   tasks:
