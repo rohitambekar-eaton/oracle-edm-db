@@ -1,35 +1,119 @@
 ---
-- hosts: "{{ db_name }}"
-  gather_facts: False
-  remote_user: orawhq
+- name: Check if playbook executed previously
+  hosts: your_oracle_group
+  gather_facts: yes
+
   tasks:
-  - debug: var=inventory_hostname
-  - debug: var=db_name
+    - name: Check if playbook has been executed
+      set_fact:
+        playbook_executed: "{{ ansible_local.playbook_status.status | default('not_executed') }}"
+      tags: ['status']
 
- 
-  - set_fact:
-      checker_location: /edm/unify/gold/patch/{{ db_name }}
+- name: Start Oracle Databases
+  hosts: dev_db_group_2_A_nonITAR
+  gather_facts: yes
+  vars:
+    ansible_user: "{{ hostvars[inventory_hostname]['ansible_user'] }}"
+    oracle_bin: "/home/{{ ansible_user }}/admin/bin"
+    oracle_bin: "/home/{{ ansible_user }}/admin/log"
+    pmon_list_file: "/edm/DONOTDELETE/ansible_linux_patching/pmon_{{ inventory_hostname }}.lst"
+    backups_list_file: "/edm/DONOTDELETE/ansible_linux_patching/backups_{{ inventory_hostname }}.lst"
 
-  - stat: path={{ checker_location }}/{{ db_name }}_prechecks_completed
-    register: prechecks_completion_checker
-    
-  - name: database precheck 
-    shell: . .bash_profile && eval {{ db_name }} && /edm/DONOTDELETE/ansible_gold_image/clone_pre_patch.sh -d {{ db_name }}
-    register: database_precheck
-    failed_when: database_precheck.rc != 0 and prechecks_completion_checker.stat.exists == false
-    tags: database_precheck
-    args:
-     executable: /bin/bash
+  tasks:
+    - name: Display information
+      debug:
+        msg: "{{ item }}"
+      loop:
+        - "This will start all DB on this node {{ inventory_hostname }}"
+        - "Please make sure ASM and filesystem are in place before running it"
+      tags: ['display']
 
-  - name: Run precheck checker
-    action: shell touch {{ checker_location }}/{{ db_name }}_prechecks_completed
-    when: prechecks_completion_checker.stat.exists == false
-    tags: prepatch_checker
-    
-  - name: database patching 
-    shell: . .bash_profile && eval {{ db_name }} && /edm/DONOTDELETE/ansible_gold_image/clone_start_patch.sh -d {{ db_name }}
-    register: database_patch
-    failed_when: database_patch.rc != 0
-    tags: database_patch
-    args:
-     executable: /bin/bash
+    - name: Start Oracle databases
+      shell: "{{ oracle_bin }}/runjob -p {{ oracle_bin }}/start_db.sh {{ item }}"
+      with_lines: "cat {{ pmon_list_file }}"
+      async: 3600
+      poll: 0
+      when: playbook_executed == 'not_executed'
+      register: start_db_result
+      tags: ['database']
+
+    - name: Sleep for 2 minutes
+      pause:
+        seconds: 120
+      when: start_db_result.results | length > 0
+      tags: ['database']
+
+    - name: Check processes
+      command: ps -ef | grep {{ item }}
+      loop:
+        - "pmon"
+        - "lsn"
+        - "mrp"
+      changed_when: false
+      ignore_errors: yes
+      when: playbook_executed == 'not_executed'
+      register: process_status
+      tags: ['processes']
+
+    - name: List backups
+      shell: "cat {{ backups_list_file }}"
+      register: backups
+      changed_when: false
+      ignore_errors: yes
+      when: playbook_executed == 'not_executed'
+      tags: ['backups']
+
+    - name: Check OEM agent and DB targets
+      command: ps -ef | grep {{ item }}
+      loop:
+        - "oraoem"
+      changed_when: false
+      ignore_errors: yes
+      when: playbook_executed == 'not_executed'
+      register: oem_status
+      tags: ['oem']
+
+    - name: Verify cron job
+      command: crontab -l | grep arch_monitor.sh
+      register: cron_jobs
+      ignore_errors: yes
+      when: playbook_executed == 'not_executed'
+      tags: ['cron']
+
+    - name: Ensure cron jobs are scheduled
+      fail:
+        msg: "Manually start cron job for missing ones."
+      when: playbook_executed == 'not_executed' and cron_jobs.stdout_lines | length != 2
+      tags: ['cron']
+
+    - name: Notify for email
+      debug:
+        msg: "NOTE: Drop an email to CCO to revert QR to original once all things are verified"
+      tags: ['email']
+
+- name: Record task execution status
+  hosts: your_oracle_group
+  gather_facts: yes
+  tasks:
+    - name: Record task execution status
+      set_fact:
+        task_status:
+          start_db: "{{ start_db_result.results | length > 0 }}"
+          process_check: "{{ process_status.results | length > 0 }}"
+          backups_listed: "{{ backups.results | length > 0 }}"
+          oem_check: "{{ oem_status.results | length > 0 }}"
+          cron_check: "{{ cron_jobs.stdout_lines | length == 2 }}"
+      when: playbook_executed == 'not_executed'
+      tags: ['status']
+
+- name: Set playbook execution status
+  hosts: your_oracle_group
+  gather_facts: no
+  tasks:
+    - name: Set playbook status to "executed"
+      set_fact:
+        ansible_local:
+          playbook_status:
+            status: 'executed'
+      when: playbook_executed == 'not_executed'
+      tags: ['status']
