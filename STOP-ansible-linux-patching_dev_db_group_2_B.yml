@@ -35,12 +35,14 @@
       tags: ['display']
       
     - name: Putting Server in blackout
-      shell: bash /edm/DONOTDELETE/ansible_linux_patching/start_blackout.sh {{ inventory_hostname }}"
+      shell: /edm/DONOTDELETE/ansible_linux_patching/start_blackout.sh {{ inventory_hostname }}"
       args:
         chdir: "{{ oracle_bin }}"
       when: playbook_executed == 'not_executed'
       tags: ['blackout']
-
+      args:
+       executable: /bin/bash
+      
     - name: Sleep for 2 minutes
       pause:
         seconds: 120
@@ -61,7 +63,7 @@
       register: pmon_list_result
 
     - name: Run stop_db.sh for each database
-      command: bash "{{ oracle_bin }}/runjob -p {{ oracle_bin }}/stop_db.sh {{ item }}"
+      shell: bash "{{ oracle_bin }}/runjob -p {{ oracle_bin }}/stop_db.sh {{ item }}"
       args:
         chdir: "{{ oracle_bin }}"
       loop: "{{ lookup('file', pmon_list_file).split('\n') }}"
