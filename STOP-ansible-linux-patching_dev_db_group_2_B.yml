@@ -1,7 +1,7 @@
 ---
 - name: Check if playbook executed previously
   hosts: dev_db_group_2_B_nonITAR
-  gather_facts: yes
+  gather_facts: false
 
   tasks:
     - name: Check if playbook has been executed
@@ -11,8 +11,8 @@
       
 - name: Stop Oracle Databases
   hosts: dev_db_group_2_B_nonITAR
-  gather_facts: true
-  become: yes
+  gather_facts: false
+  become: no
   vars:
     ansible_user: "{{ hostvars[inventory_hostname]['ansible_user'] }}"
     oracle_bin: "/home/{{ ansible_user }}/admin/bin"
@@ -35,7 +35,7 @@
       tags: ['display']
       
     - name: Putting Server in blackout
-      command: "{{ oracle_bin }}/start_blackout.sh {{ inventory_hostname }}"
+      command: bash /edm/DONOTDELETE/ansible_linux_patching/start_blackout.sh {{ inventory_hostname }}"
       args:
         chdir: "{{ oracle_bin }}"
       when: playbook_executed == 'not_executed'
@@ -61,7 +61,7 @@
       register: pmon_list_result
 
     - name: Run stop_db.sh for each database
-      command: "{{ oracle_bin }}/runjob -p {{ oracle_bin }}/stop_db.sh {{ item }}"
+      command: bash "{{ oracle_bin }}/runjob -p {{ oracle_bin }}/stop_db.sh {{ item }}"
       args:
         chdir: "{{ oracle_bin }}"
       loop: "{{ lookup('file', pmon_list_file).split('\n') }}"
@@ -70,7 +70,7 @@
 
 - name: Record task execution status
   hosts: your_oracle_group
-  gather_facts: yes
+  gather_facts: No
   tasks:
     - name: Record pmon_list task execution status
       set_fact:
