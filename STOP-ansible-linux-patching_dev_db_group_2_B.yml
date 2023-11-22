@@ -35,7 +35,7 @@
       tags: ['display']
       
     - name: Putting Server in blackout
-      shell:  .bash_profile && "{{ oracle_bin }}/runjob -p {{ oracle_bin }}/start_blackout.sh {{ inventory_hostname }}"
+      shell: . .bash_profile && "{{ oracle_bin }}/runjob -p {{ oracle_bin }}/start_blackout.sh {{ inventory_hostname }}"
       args:
         chdir: "{{ oracle_bin }}"
       when: playbook_executed == 'not_executed'
