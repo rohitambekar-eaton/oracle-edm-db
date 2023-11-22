@@ -1,35 +1,97 @@
 ---
-- hosts: "{{ db_name }}"
-  gather_facts: False
-  remote_user: orawhq
+- name: Check if playbook executed previously
+  hosts: dev_db_group_2_B_nonITAR
+  gather_facts: false
+
   tasks:
-  - debug: var=inventory_hostname
-  - debug: var=db_name
+    - name: Check if playbook has been executed
+      set_fact:
+        playbook_executed: "{{ ansible_local.playbook_status.status | default('not_executed') }}"
+      tags: ['status']
+      
+- name: Stop Oracle Databases
+  hosts: dev_db_group_2_B_nonITAR
+  gather_facts: false
+  become: no
+  vars:
+    ansible_user: "{{ hostvars[inventory_hostname]['ansible_user'] }}"
+    oracle_bin: "/home/{{ ansible_user }}/admin/bin"
+    oracle_log: "/home/{{ ansible_user }}/admin/log"
+    pmon_list_file: "/edm/DONOTDELETE/ansible_linux_patching/pmon_{{ inventory_hostname }}.lst"
+    backups_list_file: "/edm/DONOTDELETE/ansible_linux_patching/backups_{{ inventory_hostname }}.lst"
 
- 
-  - set_fact:
-      checker_location: /edm/unify/gold/patch/{{ db_name }}
+  tasks:
+    - name: Check if playbook has been executed
+      set_fact:
+        playbook_executed: "{{ ansible_local.playbook_status.status | default('not_executed') }}"
+      tags: ['status']
 
-  - stat: path={{ checker_location }}/{{ db_name }}_prechecks_completed
-    register: prechecks_completion_checker
+    - name: Display information
+      debug:
+        msg: "{{ item }}"
+      loop:
+        - "This will stop all DB on this node {{ inventory_hostname }}"
+        - "Please make ASIN and blackout is sent"
+      tags: ['display']
+      
+    - name: Putting Server in blackout
+      shell: . .bash_profile && {{ oracle_bin }}/start_blackout.sh {{ inventory_hostname }}
+      args:
+        chdir: "{{ oracle_bin }}"
+      when: playbook_executed == 'not_executed'
+      tags: ['blackout']
+      args:
+       executable: /bin/bash
+      
+    - name: Sleep for 2 minutes
+      pause:
+        seconds: 120
+      when: playbook_executed == 'not_executed'
+      tags: ['blackout']
+
+    - name: Verify blackout set in front end
+      debug:
+        msg: "Verify blackout set in front end"
+      when: playbook_executed == 'not_executed'
+      tags: ['blackout']
+
+    - name: Create pmon_list_file
+      command: "ps -ef | grep ora_pmon| grep -v grep | awk '{ print $NF }'| awk -F_ '{ print $3 }' > {{ pmon_list_file }}"
+      args:
+        chdir: "/edm/DONOTDELETE/ansible_linux_patching/"
+      tags: ['pmon_list']
+      register: pmon_list_result
+
+    - name: Run stop_db.sh for each database
+      shell: . .bash_profile && {{ oracle_bin }}/stop_db.sh {{ item }}
+      args:
+        chdir: "{{ oracle_bin }}"
+      loop: "{{ lookup('file', pmon_list_file).split('\n') }}"
+      tags: ['stop_db']
+      register: stop_db_result
+      args:
+       executable: /bin/bash      
+
+- name: Record task execution status
+  hosts: your_oracle_group
+  gather_facts: No
+  tasks:
+    - name: Record pmon_list task execution status
+      set_fact:
+        pmon_list_executed: "{{ pmon_list_result.rc == 0 }}"
+      when: playbook_executed == 'not_executed'
+      tags: ['status']
+
+    - name: Record stop_db task execution status
+      set_fact:
+        stop_db_executed: "{{ stop_db_result.rc == 0 }}"
+      when: playbook_executed == 'not_executed'
+      tags: ['status']
     
-  - name: database precheck 
-    shell: . .bash_profile && eval {{ db_name }} && /edm/DONOTDELETE/ansible_gold_image/clone_pre_patch.sh -d {{ db_name }}
-    register: database_precheck
-    failed_when: database_precheck.rc != 0 and prechecks_completion_checker.stat.exists == false
-    tags: database_precheck
-    args:
-     executable: /bin/bash
+    # Add similar tasks for other tasks as needed
 
-  - name: Run precheck checker
-    action: shell touch {{ checker_location }}/{{ db_name }}_prechecks_completed
-    when: prechecks_completion_checker.stat.exists == false
-    tags: prepatch_checker
-    
-  - name: database patching 
-    shell: . .bash_profile && eval {{ db_name }} && /edm/DONOTDELETE/ansible_gold_image/clone_start_patch.sh -d {{ db_name }}
-    register: database_patch
-    failed_when: database_patch.rc != 0
-    tags: database_patch
-    args:
-     executable: /bin/bash
+    - name: Display completion message
+      debug:
+        msg: "Playbook execution completed."
+      when: playbook_executed == 'not_executed'
+      tags: ['end']
