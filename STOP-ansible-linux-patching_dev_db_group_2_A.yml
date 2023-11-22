@@ -1,7 +1,7 @@
 ---
 - name: Check if playbook executed previously
   hosts: dev_db_group_2_B_nonITAR
-  gather_facts: true
+  gather_facts: false
 
   tasks:
     - name: Check if playbook has been executed
@@ -11,7 +11,7 @@
       
 - name: Stop Oracle Databases
   hosts: dev_db_group_2_B_nonITAR
-  gather_facts: true
+  gather_facts: false
   become: no
   vars:
     ansible_user: "{{ hostvars[inventory_hostname]['ansible_user'] }}"
