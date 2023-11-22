@@ -35,7 +35,7 @@
       tags: ['display']
       
     - name: Putting Server in blackout
-      shell: "/edm/DONOTDELETE/ansible_linux_patching/start_blackout.sh {{ inventory_hostname }}"
+      shell: . .bash_profile && /edm/DONOTDELETE/ansible_linux_patching/start_blackout.sh {{ inventory_hostname }}
       args:
         chdir: "{{ oracle_bin }}"
       when: playbook_executed == 'not_executed'
