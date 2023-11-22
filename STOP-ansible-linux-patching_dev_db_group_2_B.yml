@@ -56,7 +56,7 @@
       tags: ['blackout']
 
     - name: Create pmon_list_file
-      command: "ps -ef | grep ora_pmon| grep -v grep | awk '{ print $NF }'| awk -F_ '{ print $3 }' > {{ pmon_list_file }}"
+      command: ps -ef | grep ora_pmon| grep -v grep | awk '{ print $NF }'| awk -F_ '{ print $3 }' > {{ pmon_list_file }}
       args:
         chdir: "/edm/DONOTDELETE/ansible_linux_patching/"
       tags: ['pmon_list']
