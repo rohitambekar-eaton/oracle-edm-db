@@ -16,7 +16,7 @@
   vars:
     ansible_user: "{{ hostvars[inventory_hostname]['ansible_user'] }}"
     oracle_bin: "/home/{{ ansible_user }}/admin/bin"
-    oracle_bin: "/home/{{ ansible_user }}/admin/log"
+    oracle_log: "/home/{{ ansible_user }}/admin/log"
     pmon_list_file: "/edm/DONOTDELETE/ansible_linux_patching/pmon_{{ inventory_hostname }}.lst"
     backups_list_file: "/edm/DONOTDELETE/ansible_linux_patching/backups_{{ inventory_hostname }}.lst"
 
