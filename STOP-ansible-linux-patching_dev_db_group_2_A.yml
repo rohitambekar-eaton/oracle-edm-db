@@ -1,6 +1,6 @@
 ---
 - name: Check if playbook executed previously
-  hosts: dev_db_group_2_B_nonITAR
+  hosts: dev_db_group_2_A_nonITAR
   gather_facts: false
 
   tasks:
@@ -10,7 +10,7 @@
       tags: ['status']
       
 - name: Stop Oracle Databases
-  hosts: dev_db_group_2_B_nonITAR
+  hosts: dev_db_group_2_A_nonITAR
   gather_facts: false
   become: no
   vars:
