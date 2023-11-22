@@ -1,6 +1,6 @@
 ---
 - name: Check if playbook executed previously
-  hosts: dev_db_group_2_B_nonITAR
+  hosts: dev_db_group_2_A_nonITAR
   gather_facts: false
 
   tasks:
@@ -10,13 +10,13 @@
       tags: ['status']
       
 - name: Stop Oracle Databases
-  hosts: dev_db_group_2_B_nonITAR
+  hosts: dev_db_group_2_A_nonITAR
   gather_facts: false
   become: no
   vars:
     ansible_user: "{{ hostvars[inventory_hostname]['ansible_user'] }}"
     oracle_bin: "/home/{{ ansible_user }}/admin/bin"
-    oracle_log: "/home/{{ ansible_user }}/admin/log"
+    oracle_bin: "/home/{{ ansible_user }}/admin/log"
     pmon_list_file: "/edm/DONOTDELETE/ansible_linux_patching/pmon_{{ inventory_hostname }}.lst"
     backups_list_file: "/edm/DONOTDELETE/ansible_linux_patching/backups_{{ inventory_hostname }}.lst"
 
@@ -35,14 +35,12 @@
       tags: ['display']
       
     - name: Putting Server in blackout
-      shell: . .bash_profile && {{ oracle_bin }}/start_blackout.sh {{ inventory_hostname }}
+      command: bash /edm/DONOTDELETE/ansible_linux_patching/start_blackout.sh {{ inventory_hostname }}"
       args:
         chdir: "{{ oracle_bin }}"
       when: playbook_executed == 'not_executed'
       tags: ['blackout']
-      args:
-       executable: /bin/bash
-      
+
     - name: Sleep for 2 minutes
       pause:
         seconds: 120
@@ -63,14 +61,12 @@
       register: pmon_list_result
 
     - name: Run stop_db.sh for each database
-      shell: . .bash_profile && {{ oracle_bin }}/stop_db.sh {{ item }}
+      command: bash "{{ oracle_bin }}/runjob -p {{ oracle_bin }}/stop_db.sh {{ item }}"
       args:
         chdir: "{{ oracle_bin }}"
       loop: "{{ lookup('file', pmon_list_file).split('\n') }}"
       tags: ['stop_db']
       register: stop_db_result
-      args:
-       executable: /bin/bash      
 
 - name: Record task execution status
   hosts: your_oracle_group
