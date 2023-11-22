@@ -1,7 +1,7 @@
 ---
 - name: Check if playbook executed previously
-  hosts: dev_db_group_2_A_nonITAR
-  gather_facts: yes
+  hosts: dev_db_group_2_B_nonITAR
+  gather_facts: false
 
   tasks:
     - name: Check if playbook has been executed
@@ -10,8 +10,8 @@
       tags: ['status']
 
 - name: Start Oracle Databases
-  hosts: dev_db_group_2_A_nonITAR
-  gather_facts: yes
+  hosts: dev_db_group_2_B_nonITAR
+  gather_facts: false
   vars:
     ansible_user: "{{ hostvars[inventory_hostname]['ansible_user'] }}"
     oracle_bin: "/home/{{ ansible_user }}/admin/bin"
@@ -29,7 +29,7 @@
       tags: ['display']
 
     - name: Start Oracle databases
-      shell: "{{ oracle_bin }}/runjob -p {{ oracle_bin }}/start_db.sh {{ item }}"
+      shell: bash "{{ oracle_bin }}/runjob -p {{ oracle_bin }}/start_db.sh {{ item }}"
       with_lines: "cat {{ pmon_list_file }}"
       async: 3600
       poll: 0
@@ -93,7 +93,7 @@
 
 - name: Record task execution status
   hosts: your_oracle_group
-  gather_facts: yes
+  gather_facts: false
   tasks:
     - name: Record task execution status
       set_fact:
