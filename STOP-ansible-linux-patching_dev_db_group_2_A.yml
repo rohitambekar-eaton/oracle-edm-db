@@ -5,7 +5,7 @@
 
   tasks:
     - name: Check if the task has already been executed for this host
-      shell: cat /edm/DONOTDELETE/ansible_linux_patching/{{hosts}}_stop_checker_file 2>/dev/null
+      shell: cat /edm/DONOTDELETE/ansible_linux_patching/{{ hosts }}_stop_checker_file 2>/dev/null
       register: checker_file_content
 
     - name: Run the script if the task has not been executed
@@ -22,13 +22,13 @@
 
         - name: Add hostname to the checker file on success
           lineinfile:
-            path: /edm/DONOTDELETE/ansible_linux_patching/{{hosts}}_stop_checker_file
+            path: /edm/DONOTDELETE/ansible_linux_patching/{{ hosts }}_stop_checker_file
             line: "{{ inventory_hostname }}"
           when: script_result.rc == 0
       when: checker_file_content.stdout.find(inventory_hostname) == -1
 
     - name: Display checker file content
-      shell: cat /edm/DONOTDELETE/ansible_linux_patching/{{hosts}}_stop_checker_file
+      shell: cat /edm/DONOTDELETE/ansible_linux_patching/{{ hosts }}_stop_checker_file
       register: checker_file_content_after
 
     - name: Display checker file status
