@@ -1,97 +1,36 @@
 ---
-- name: Check if playbook executed previously
+- name: Execute Script on Web Servers and Create Checker File
   hosts: dev_db_group_2_B_nonITAR
-  gather_facts: false
-
-  tasks:
-    - name: Check if playbook has been executed
-      set_fact:
-        playbook_executed: "{{ ansible_local.playbook_status.status | default('not_executed') }}"
-      tags: ['status']
-      
-- name: Stop Oracle Databases
-  hosts: dev_db_group_2_B_nonITAR
-  gather_facts: false
   become: no
-  vars:
-    ansible_user: "{{ hostvars[inventory_hostname]['ansible_user'] }}"
-    oracle_bin: "/home/{{ ansible_user }}/admin/bin"
-    oracle_log: "/home/{{ ansible_user }}/admin/log"
-    pmon_list_file: "/edm/DONOTDELETE/ansible_linux_patching/pmon_{{ inventory_hostname }}.lst"
-    backups_list_file: "/edm/DONOTDELETE/ansible_linux_patching/backups_{{ inventory_hostname }}.lst"
 
   tasks:
-    - name: Check if playbook has been executed
-      set_fact:
-        playbook_executed: "{{ ansible_local.playbook_status.status | default('not_executed') }}"
-      tags: ['status']
+    - name: Check if the task has already been executed for this host
+      shell: cat /edm/DONOTDELETE/ansible_linux_patching/{{hosts}}_stop_checker_file 2>/dev/null
+      register: checker_file_content
 
-    - name: Display information
+    - name: Run the script if the task has not been executed
+      block:
+        - name: Run the script
+          command: /edm/DONOTDELETE/ansible_linux_patching/stop_db_all_single_node.sh
+          register: script_result
+          ignore_errors: yes
+
+        - name: Check for errors
+          fail:
+            msg: "Script execution failed with exit code {{ script_result.rc }}"
+          when: script_result.rc != 0
+
+        - name: Add hostname to the checker file on success
+          lineinfile:
+            path: /edm/DONOTDELETE/ansible_linux_patching/{{hosts}}_stop_checker_file
+            line: "{{ inventory_hostname }}"
+          when: script_result.rc == 0
+      when: checker_file_content.stdout.find(inventory_hostname) == -1
+
+    - name: Display checker file content
+      shell: cat /edm/DONOTDELETE/ansible_linux_patching/{{hosts}}_stop_checker_file
+      register: checker_file_content_after
+
+    - name: Display checker file status
       debug:
-        msg: "{{ item }}"
-      loop:
-        - "This will stop all DB on this node {{ inventory_hostname }}"
-        - "Please make ASIN and blackout is sent"
-      tags: ['display']
-      
-    - name: Putting Server in blackout
-      shell: . .bash_profile && {{ oracle_bin }}/start_blackout.sh {{ inventory_hostname }}
-      args:
-        chdir: "{{ oracle_bin }}"
-      when: playbook_executed == 'not_executed'
-      tags: ['blackout']
-      args:
-       executable: /bin/bash
-      
-    - name: Sleep for 2 minutes
-      pause:
-        seconds: 120
-      when: playbook_executed == 'not_executed'
-      tags: ['blackout']
-
-    - name: Verify blackout set in front end
-      debug:
-        msg: "Verify blackout set in front end"
-      when: playbook_executed == 'not_executed'
-      tags: ['blackout']
-
-    - name: Create pmon_list_file
-      command: ps -ef | grep ora_pmon| grep -v grep | awk '{ print $NF }'| awk -F_ '{ print $3 }' > {{ pmon_list_file }}
-      args:
-        chdir: "/edm/DONOTDELETE/ansible_linux_patching/"
-      tags: ['pmon_list']
-      register: pmon_list_result
-
-    - name: Run stop_db.sh for each database
-      shell: . .bash_profile && {{ oracle_bin }}/runjob -p {{ oracle_bin }}/stop_db.sh {{ item }}
-      args:
-        chdir: "{{ oracle_bin }}"
-      loop: "{{ lookup('file', pmon_list_file).split('\n') }}"
-      tags: ['stop_db']
-      register: stop_db_result
-      args:
-       executable: /bin/bash      
-
-- name: Record task execution status
-  hosts: your_oracle_group
-  gather_facts: No
-  tasks:
-    - name: Record pmon_list task execution status
-      set_fact:
-        pmon_list_executed: "{{ pmon_list_result.rc == 0 }}"
-      when: playbook_executed == 'not_executed'
-      tags: ['status']
-
-    - name: Record stop_db task execution status
-      set_fact:
-        stop_db_executed: "{{ stop_db_result.rc == 0 }}"
-      when: playbook_executed == 'not_executed'
-      tags: ['status']
-    
-    # Add similar tasks for other tasks as needed
-
-    - name: Display completion message
-      debug:
-        msg: "Playbook execution completed."
-      when: playbook_executed == 'not_executed'
-      tags: ['end']
+        msg: "Checker file content: {{ checker_file_content_after.stdout }}"
