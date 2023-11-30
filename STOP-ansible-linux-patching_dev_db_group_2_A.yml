@@ -3,7 +3,7 @@
   gather_facts: False
   
   tasks:
-  - debug: var=hosts
+  - debug: var=inventory_hostname
   - debug: var=ansible_user
   
   - set_fact:
