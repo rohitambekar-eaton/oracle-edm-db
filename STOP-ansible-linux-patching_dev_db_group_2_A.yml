@@ -23,6 +23,7 @@
     shell: cat /edm/DONOTDELETE/ansible_linux_patching/stop_checker_file | grep -i {{ inventory_hostname }}
     when: stop_checker_file.stat.exists == true
     register: checker_file_content
+    ignore_errors: true
   
   - name: Run the script if the task has not been executed
     block:
