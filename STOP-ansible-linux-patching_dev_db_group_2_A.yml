@@ -7,7 +7,7 @@
   - debug: var=ansible_user
   
   - set_fact:
-    checker_location: /edm/DONOTDELETE/ansible_linux_patching
+      checker_location: /edm/DONOTDELETE/ansible_linux_patching
   
   
   - stat: path={{ checker_location }}/stop_checker_file
