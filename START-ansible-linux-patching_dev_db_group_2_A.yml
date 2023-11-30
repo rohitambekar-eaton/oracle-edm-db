@@ -1,36 +1,53 @@
 ---
-- name: Execute Script on Web Servers and Create Checker File
-  hosts: dev_db_group_2_B_nonITAR
-  become: no
-
+- hosts: dev_db_group_2_A_nonITAR
+  gather_facts: False
+  
   tasks:
-    - name: Check if the task has already been executed for this host
-      shell: cat /edm/DONOTDELETE/ansible_linux_patching/{{hosts}}_start_checker_file 2>/dev/null
-      register: checker_file_content
+  - debug: var=inventory_hostname
+  - debug: var=ansible_user
+  
+  - set_fact:
+      checker_location: /edm/DONOTDELETE/ansible_linux_patching
+  
+  
+  - stat: path={{ checker_location }}/start_checker_file
+    register: stop_checker_file
+  
+  - name: Create the checker file if it doesn't exist
+    file:
+      path: /edm/DONOTDELETE/ansible_linux_patching/start_checker_file
+      state: touch
+    when: stop_checker_file.stat.exists == false
+    
+  - name: Check hostname exists in start checker file
+    shell: cat /edm/DONOTDELETE/ansible_linux_patching/start_checker_file | grep -i {{ inventory_hostname }}
+    when: stop_checker_file.stat.exists == true
+    register: checker_file_content
+    ignore_errors: true
+  
+  - name: Run the script if the task has not been executed
+    block:
+      - name: Run the script
+        shell: /edm/DONOTDELETE/ansible_linux_patching/start_db_all_single_node.sh
+        register: script_result
+        ignore_errors: yes
 
-    - name: Run the script if the task has not been executed
-      block:
-        - name: Run the script
-          command: /edm/DONOTDELETE/ansible_linux_patching/start_db_all_single_node.sh
-          register: script_result
-          ignore_errors: yes
+      - name: Check for errors
+        fail:
+          msg: "Script execution failed with exit code {{ script_result.rc }}"
+        when: script_result.rc != 0
 
-        - name: Check for errors
-          fail:
-            msg: "Script execution failed with exit code {{ script_result.rc }}"
-          when: script_result.rc != 0
+      - name: Add hostname to the checker file on success
+        lineinfile:
+          path: /edm/DONOTDELETE/ansible_linux_patching/start_checker_file
+          line: "{{ inventory_hostname }}"
+        when: script_result.rc == 0
+    when: checker_file_content.stdout.find(inventory_hostname) == -1
 
-        - name: Add hostname to the checker file on success
-          lineinfile:
-            path: /edm/DONOTDELETE/ansible_linux_patching/{{hosts}}_start_checker_file
-            line: "{{ inventory_hostname }}"
-          when: script_result.rc == 0
-      when: checker_file_content.stdout.find(inventory_hostname) == -1
+  - name: Display checker file content
+    shell: cat /edm/DONOTDELETE/ansible_linux_patching/start_checker_file
+    register: checker_file_content_after
 
-    - name: Display checker file content
-      shell: cat /edm/DONOTDELETE/ansible_linux_patching/{{hosts}}_start_checker_file
-      register: checker_file_content_after
-
-    - name: Display checker file status
-      debug:
-        msg: "Checker file content: {{ checker_file_content_after.stdout }}"
+  - name: Display checker file status
+    debug:
+      msg: "Checker file content: {{ checker_file_content_after.stdout }}"    
