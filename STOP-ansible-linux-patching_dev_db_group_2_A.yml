@@ -4,6 +4,12 @@
   become: no
 
   tasks:
+    - name: Check if the checker file exists
+      stat:
+        path: /edm/DONOTDELETE/ansible_linux_patching/start_checker_file
+      register: checker_file_status
+      ignore_errors: true
+
     - name: Skip the task if it has already been executed
       block:
         - name: Display message
