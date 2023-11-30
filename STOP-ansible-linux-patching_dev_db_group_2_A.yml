@@ -28,7 +28,7 @@
   - name: Run the script if the task has not been executed
     block:
       - name: Run the script
-        command: /edm/DONOTDELETE/ansible_linux_patching/stop_db_all_single_node.sh
+        shell: /edm/DONOTDELETE/ansible_linux_patching/stop_db_all_single_node.sh
         register: script_result
         ignore_errors: yes
 
