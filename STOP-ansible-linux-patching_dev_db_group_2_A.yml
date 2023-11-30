@@ -4,9 +4,19 @@
   become: no
 
   tasks:
-    - name: Check if the task has already been executed for this host
-      shell: cat /edm/DONOTDELETE/ansible_linux_patching/stop_checker_file 2>/dev/null
-      register: checker_file_content
+    - name: Skip the task if it has already been executed
+      block:
+        - name: Display message
+          debug:
+            msg: "Task already executed for {{ inventory_hostname }}"
+
+      when: checker_file_content.stdout.find(inventory_hostname) != -1
+
+    - name: Create the checker file if it doesn't exist
+      file:
+        path: /path/to/your/checker_file
+        state: touch
+      when: checker_file_content.rc != 0
 
     - name: Run the script if the task has not been executed
       block:
