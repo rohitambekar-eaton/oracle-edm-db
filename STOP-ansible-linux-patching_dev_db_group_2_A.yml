@@ -1,5 +1,6 @@
 ---
-- hosts: dev_db_group_2_A_nonITAR
+- name: Execute Script on dev db group 2
+  hosts: dev_db_group_2_A_nonITAR
   gather_facts: False
   remote_user: {{  ansible_user }}
   tasks:
@@ -8,7 +9,8 @@
   
     - set_fact:
       checker_location: /edm/DONOTDELETE/ansible_linux_patching
-   
+    
+    
     - stat: path={{ checker_location }}/stop_checker_file
     register: stop_checker_file
     
