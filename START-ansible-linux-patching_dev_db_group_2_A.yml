@@ -1,5 +1,5 @@
 ---
-- hosts: dev_db_group_2_A_nonITAR
+- hosts: dev_db_group_3_A_nonITAR
   gather_facts: False
   
   tasks:
